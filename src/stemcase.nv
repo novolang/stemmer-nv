@@ -1,0 +1,127 @@
+// stemcase.nv — the case contract, published, because the reference
+// implementations leave it unwritten and a caller who gets it wrong
+// is not told.
+//
+// `stem` DOES NOT LOWER-CASE, AND SAYS SO OUT LOUD
+//
+// Every Snowball algorithm is defined on lower-case input.  The
+// upstream generated stemmers do not lower-case; `rust-stemmers` does
+// not; `snowballstemmer` does not.  In all three, `Running` goes in
+// and `Running` comes out, because no suffix in the step tables is
+// spelt with a capital.  Nothing is raised, nothing is logged, and
+// the caller has just written a second, unrelated term into an index
+// that already contains `run`.
+//
+// This package could lower-case inside `stem` and make the problem
+// vanish.  It does not, for two reasons and the second is the
+// decisive one.
+//
+// First, a stem is a token and the caller usually holds the case for
+// its own purposes — a highlighter wants the original, an indexer
+// wants both.  Folding inside `stem` would mean the function no
+// longer answers a function OF ITS ARGUMENT in the caller's alphabet.
+//
+// Second, and this is the one: lower-casing correctly is
+// LANGUAGE-DEPENDENT and this package takes no Unicode dependency.
+// Turkish lowers `I` to `ı` and `İ` to `i`; every other language's
+// rule gets both of those wrong.  A `stem` that folded would have to
+// either pick a rule and be silently wrong for Turkish, or take the
+// 245 KB of tables that novo.toml's dependency comment refuses.
+//
+// So `stemword.stem` REFUSES a word with an upper-case letter in it,
+// with `StemNeedsLowercase`, and this module is what a caller uses to
+// satisfy it.  A refusal is a loud wrong answer, and a loud wrong
+// answer is the only kind anybody fixes.
+
+use stemlang
+
+// The word with every ASCII letter `A`..`Z` mapped to `a`..`z`, and
+// no other byte changed.
+//
+// This is the whole fold for English, Porter and every Latin-alphabet
+// language on the list, because the Snowball algorithms for those
+// languages either use no letters outside ASCII or treat the accented
+// ones as distinct letters that are already lower-case.
+//
+// It is NOT the fold for Turkish, whose `I` must become `ı` and not
+// `i`, and it does nothing at all for Greek, Russian, Armenian,
+// Arabic, Hindi, Nepali, Tamil or Yiddish.  `needs_unicode_fold`
+// names exactly that set.
+//
+// ```novo
+// use stemcase
+//
+// fn main() [io]
+//     println(stemcase.fold_ascii("Running"))      // running
+//     println(stemcase.fold_ascii("ANDES"))        // andes
+// ```
+pub fn fold_ascii(word: Str) -> Str []
+    todo("stemmer-nv.stemcase.fold_ascii")
+
+// Whether the word is in the form `stemword.stem` accepts for this
+// language.
+//
+// False when the word is empty, when it holds an ASCII space or tab,
+// and when it holds an ASCII letter `A`..`Z`.  Those are exactly the
+// three token refusals in `stemerror.StemError`, so a caller that
+// filters on this predicate never meets one.
+//
+// For a language where `needs_unicode_fold` is true, being prepared
+// is necessary and not sufficient: this package cannot see that `Ω`
+// is upper-case, so a Greek word that has not been folded passes here
+// and stems wrongly.  `fold_note` is the sentence that says what to
+// do about that.
+//
+// ```novo
+// use stemcase
+//
+// fn main() [io]
+//     println("${stemcase.is_prepared(StemEnglish, "running")}")        // true
+//     println("${stemcase.is_prepared(StemEnglish, "Running")}")        // false
+//     println("${stemcase.is_prepared(StemEnglish, "running fast")}")   // false
+// ```
+pub fn is_prepared(lang: stemlang.StemLang, word: Str) -> Bool []
+    todo("stemmer-nv.stemcase.is_prepared")
+
+// Whether preparing a word in this language needs more than
+// `fold_ascii`.
+//
+// True for Greek, Turkish, Russian, Armenian, Arabic, Hindi, Nepali,
+// Tamil and Yiddish — every language whose alphabet is not Latin,
+// plus Turkish, whose alphabet is Latin and whose case mapping is
+// not the common one.  False for English, Porter and the other Latin
+// languages.
+//
+// A caller writing a multi-language indexer branches on this once,
+// per language, at start-up: false means `fold_ascii` is enough and
+// the program carries no Unicode tables; true means it reaches for
+// unicode-nv.
+//
+// ```novo
+// use stemcase
+//
+// fn main() [io]
+//     println("${stemcase.needs_unicode_fold(StemEnglish)}")   // false
+//     println("${stemcase.needs_unicode_fold(StemTurkish)}")   // true
+// ```
+pub fn needs_unicode_fold(lang: stemlang.StemLang) -> Bool []
+    todo("stemmer-nv.stemcase.needs_unicode_fold")
+
+// One sentence saying what a caller must do to a word in this
+// language before stemming it, ending without a full stop.
+//
+// For English: that ASCII lower-casing is the whole preparation.  For
+// Turkish: that the dotted and dotless `i` make a locale-free fold
+// wrong.  For Greek: that the algorithm removes diacritics itself but
+// expects lower-case input.  The text is written for a log line or a
+// comment in a caller's configuration, and it is the documentation of
+// the refused dependency at the place a reader meets the problem.
+//
+// ```novo
+// use stemcase
+//
+// fn main() [io]
+//     println(stemcase.fold_note(StemTurkish))
+// ```
+pub fn fold_note(lang: stemlang.StemLang) -> Str []
+    todo("stemmer-nv.stemcase.fold_note")

@@ -1,0 +1,259 @@
+// stemlang.nv — one closed enum over every language Snowball
+// publishes an algorithm for, and a separate, published answer to
+// which of them this RELEASE can actually stem.
+//
+// THE ENUM IS THE WHOLE SNOWBALL SET, NOT THE SHIPPING SET
+//
+// The obvious design is the other one: declare an arm for English
+// today and add French when the French algorithm is written.  It is
+// wrong, and the reason is that adding an arm to a published enum is
+// a BREAKING change for every caller that matches on it exhaustively.
+// A search engine that maps its configured language to a
+// `StemLang` has such a match, and a release that merely taught this
+// package Danish would stop that program compiling.  The set of
+// languages Snowball publishes is a closed, slow-moving list from the
+// upstream project, so it is published once, in full, here.
+//
+// The cost of that decision is the one the design note warns about:
+// an arm for a language whose algorithm is not written is a `todo()`
+// waiting to fire in somebody's production indexer.  So availability
+// is DATA rather than a surprise.  `available` answers the list this
+// release can stem, `is_available` answers one language, and
+// `require` turns the question into a `Result` a caller runs ONCE at
+// start-up, beside where it reads its configuration, rather than
+// meeting it at the first word of the first document.
+//
+// WHAT 0.1.0 WILL SHIP
+//
+// `available` answers `[StemEnglish, StemPorter]` and nothing else.
+// English is the Porter2 algorithm from the Snowball site, and
+// `StemPorter` is Porter's original 1980 algorithm, kept because
+// published retrieval results are quoted against it and a port that
+// silently substituted Porter2 would not reproduce them.  Both are
+// pure ASCII, which is why this package takes no dependency; see the
+// `[dependencies]` comment in novo.toml.
+//
+// AND NOTHING FALLS THROUGH TO ENGLISH
+//
+// Asking for a language that is not available is
+// `StemUnsupportedLanguage`, never English applied to a French word.
+// English stemming over French answers `manges` for `manges` and
+// `parlaient` for `parlaient`: a half-working index, wrong in a way
+// no test over English vectors can see, and the single most likely
+// thing a hurried implementation would do.
+
+use stemerror
+
+// A language Snowball publishes a stemming algorithm for.
+//
+// The names are Snowball's own, which is what `lang_name` prints and
+// `lang_named` reads.  Membership of this enum says the algorithm
+// exists upstream; it does not say this release has ported it.
+// `is_available` is the question that does.
+//
+// ```novo
+// use stemlang
+//
+// fn main() [io]
+//     println(stemlang.lang_name(StemEnglish))     // english
+// ```
+pub enum StemLang
+    // The Porter2 algorithm from the Snowball site's English page.
+    // The default meaning of "the English stemmer" since 2002, and
+    // the only algorithm whose vectors this package's suites assert
+    // in full.
+    StemEnglish
+    // Porter's original 1980 algorithm, from "An algorithm for suffix
+    // stripping", Program 14(3).  A separate arm rather than a flag
+    // on `StemEnglish`, because the two disagree on real words and a
+    // paper that quotes retrieval numbers quotes them against one of
+    // them.
+    StemPorter
+    // The Arabic algorithm.  Written over the Arabic alphabet, with a
+    // prefix step as well as a suffix step, which no Latin algorithm
+    // here has.
+    StemArabic
+    // The Armenian algorithm.
+    StemArmenian
+    // The Basque algorithm.
+    StemBasque
+    // The Catalan algorithm.
+    StemCatalan
+    // The Danish algorithm.
+    StemDanish
+    // The Dutch algorithm.
+    StemDutch
+    // The Finnish algorithm.  The longest of the Snowball set, with
+    // six steps over an agglutinative morphology.
+    StemFinnish
+    // The French algorithm.  Its vowel set includes the accented
+    // letters, so a word that arrives without its accents stems
+    // differently from the same word with them.
+    StemFrench
+    // The German algorithm.  Snowball's own version folds `ä`, `ö`
+    // and `ü` to `a`, `o` and `u` before it begins, so `Bücher` and
+    // `Buecher` do not stem alike.
+    StemGerman
+    // The Greek algorithm.  It removes diacritics as its first act,
+    // which is the step that makes this language need more than an
+    // ASCII fold.
+    StemGreek
+    // The Hindi algorithm, over the Devanagari alphabet.
+    StemHindi
+    // The Hungarian algorithm.
+    StemHungarian
+    // The Indonesian algorithm.  Prefix and suffix removal both, over
+    // a morphology with no inflection for number or tense.
+    StemIndonesian
+    // The Irish algorithm.  Its first step undoes initial mutation,
+    // so the letters removed are at the FRONT of the word.
+    StemIrish
+    // The Italian algorithm.
+    StemItalian
+    // The Lithuanian algorithm.
+    StemLithuanian
+    // The Nepali algorithm, over the Devanagari alphabet.
+    StemNepali
+    // The Norwegian algorithm, written for Bokmål.
+    StemNorwegian
+    // The Portuguese algorithm.  Snowball publishes one algorithm for
+    // both the European and the Brazilian orthography.
+    StemPortuguese
+    // The Romanian algorithm.
+    StemRomanian
+    // The Russian algorithm, over the Cyrillic alphabet.  It treats
+    // `ё` and `е` as the same letter.
+    StemRussian
+    // The Serbian algorithm, written for the Latin orthography.
+    StemSerbian
+    // The Spanish algorithm.
+    StemSpanish
+    // The Swedish algorithm.
+    StemSwedish
+    // The Tamil algorithm, over the Tamil alphabet.
+    StemTamil
+    // The Turkish algorithm.  Its lower-casing is the one that cannot
+    // be done with an ASCII fold or with a locale-free Unicode fold:
+    // `I` lowers to `ı` and `İ` lowers to `i`, and every other
+    // language's rule gets both wrong.
+    StemTurkish
+    // The Yiddish algorithm, over the Hebrew alphabet.
+    StemYiddish
+
+// Every language this enum holds, in the order it is declared.
+//
+// The whole Snowball set, available or not.  A program that renders a
+// language picker shows this list and greys out what
+// `is_available` refuses.
+//
+// ```novo
+// use stemlang
+//
+// fn main() [io]
+//     println("${list.len(stemlang.all()) > list.len(stemlang.available())}")   // true
+// ```
+pub fn all() -> [StemLang] []
+    todo("stemmer-nv.stemlang.all")
+
+// The languages this release can actually stem.
+//
+// For 0.1.0 this is `[StemEnglish, StemPorter]`.  It grows as
+// algorithms are ported, and growing it is not a breaking change,
+// which is the point of publishing the whole enum up front.
+//
+// ```novo
+// use stemlang
+//
+// fn main() [io]
+//     for l in stemlang.available()
+//         println(stemlang.lang_name(l))
+// ```
+pub fn available() -> [StemLang] []
+    todo("stemmer-nv.stemlang.available")
+
+// Whether this release has an algorithm for a language.
+//
+// The question `stemword.stem` answers with
+// `StemUnsupportedLanguage`, asked before the call instead of after
+// it.
+//
+// ```novo
+// use stemlang
+//
+// fn main() [io]
+//     println("${stemlang.is_available(StemEnglish)}")   // true
+//     println("${stemlang.is_available(StemTamil)}")     // false
+// ```
+pub fn is_available(lang: StemLang) -> Bool []
+    todo("stemmer-nv.stemlang.is_available")
+
+// The language back again when this release can stem it, and
+// `StemUnsupportedLanguage` when it cannot.
+//
+// This is the start-up check.  A program that reads a language out of
+// a configuration file calls it there, once, and fails while somebody
+// is still watching the log — rather than at the first word of the
+// first document, hours later, inside a worker.
+//
+// ```novo
+// use stemlang
+// use stemerror
+//
+// fn main() [io]
+//     match stemlang.require(StemFrench)
+//         Ok(_)  => println("french can be stemmed")
+//         Err(e) => println(stemerror.message(e))
+// ```
+pub fn require(lang: StemLang) -> Result<StemLang, stemerror.StemError> []
+    todo("stemmer-nv.stemlang.require")
+
+// Snowball's own name for the language, lower-case and ASCII:
+// `"english"`, `"porter"`, `"french"`, `"norwegian"`.
+//
+// These are the names the upstream project uses for its algorithm
+// files and the names `snowballstemmer` takes, so a configuration
+// written for either tool reads here unchanged.
+//
+// ```novo
+// use stemlang
+//
+// fn main() [io]
+//     println(stemlang.lang_name(StemPorter))      // porter
+// ```
+pub fn lang_name(lang: StemLang) -> Str []
+    todo("stemmer-nv.stemlang.lang_name")
+
+// The language a Snowball name denotes, or `None`.
+//
+// The names are the ones `lang_name` prints, so a configuration key
+// or a command-line flag round-trips through the pair.  `None` is a
+// name Snowball has no algorithm for at all, which is a different
+// fact from a language this release has not ported yet.
+//
+// ```novo
+// use stemlang
+//
+// fn main() [io]
+//     match stemlang.lang_named("swedish")
+//         Some(l) => println(stemlang.lang_code(l))     // sv
+//         None    => println("snowball has no such algorithm")
+// ```
+pub fn lang_named(name: Str) -> ?StemLang []
+    todo("stemmer-nv.stemlang.lang_named")
+
+// The ISO 639-1 two-letter code for the language: `"en"`, `"fr"`,
+// `"ru"`.
+//
+// `StemPorter` answers `"en"`, because it is an English algorithm.
+// The code is therefore NOT unique across the enum and cannot be used
+// to identify an algorithm; `lang_name` is the identifier.
+//
+// ```novo
+// use stemlang
+//
+// fn main() [io]
+//     println(stemlang.lang_code(StemPorter))      // en
+//     println(stemlang.lang_code(StemEnglish))     // en
+// ```
+pub fn lang_code(lang: StemLang) -> Str []
+    todo("stemmer-nv.stemlang.lang_code")

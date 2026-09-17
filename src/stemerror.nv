@@ -1,0 +1,117 @@
+// stemerror.nv — the four things a stemmer refuses to answer, and why
+// each of them is a refusal rather than a plausible-looking string.
+//
+// A STEMMER THAT GUESSES BREAKS AN INDEX SILENTLY
+//
+// The reference implementations answer a string for every input.
+// `rust-stemmers` and `snowballstemmer` both hand back the word
+// unchanged when nothing in the algorithm applies, which is correct
+// for `sky` and catastrophic for `Running`: the English algorithm is
+// defined on lower-case input, `Running` has no lower-case suffix to
+// strip, and the caller gets `Running` back and stores it beside the
+// `run` that the same word produced in the document that happened to
+// begin a sentence differently.  Nothing reports an error.  The index
+// is wrong and the only symptom is a query that misses.
+//
+// So every entry point that can meet one of these answers a
+// `Result`, and the four arms below are the whole set.  Three of them
+// are about the TOKEN and one is about the CONFIGURATION, which is
+// the distinction `is_configuration_fault` draws: a language this
+// release cannot stem is knowable at start-up, and a caller that
+// checks it there never meets it again.
+//
+// `StemUnsupportedLanguage` is the one that matters most, and it is
+// the refusal this package exists to make.  A stemmer that does not
+// know a language MUST NOT fall through to English.  English stemming
+// applied to French answers `parlaient` for `parlaient` and `mange`
+// for `manges`, which is not nothing — it is a half-working index
+// that is wrong in a way no test over English vectors can see.
+
+// Why a word could not be stemmed.
+//
+// ```novo
+// use stemerror
+//
+// fn main() [io]
+//     println(stemerror.message(StemEmptyWord))
+// ```
+pub enum StemError
+    // The language is a member of `stemlang.StemLang` but this
+    // release has no algorithm for it, and `name` is the Snowball
+    // name of the language that was asked for.  The enum is closed
+    // over every language Snowball publishes so that adding one later
+    // is not a breaking change; this refusal is what makes the
+    // difference between a declared language and a working one
+    // visible.  `stemlang.is_available` answers the same question
+    // before the call, and `stemlang.require` answers this value at
+    // start-up.
+    StemUnsupportedLanguage(name: Str)
+    // The word contains an upper-case letter, and `word` is the word
+    // as it arrived.  Snowball's algorithms are defined on lower-case
+    // input and the reference implementations make lower-casing the
+    // caller's job.  Answering the word unchanged is what those
+    // implementations do and it is why an index built from mixed-case
+    // tokens is quietly wrong.  `stemcase.fold_ascii` is the fix for
+    // a Latin-alphabet language.
+    StemNeedsLowercase(word: Str)
+    // The word was the empty string.  The empty string stems to the
+    // empty string under every algorithm, so an accepted empty word
+    // is indistinguishable from a word that stemmed successfully to
+    // nothing, and a tokenizer that emits one emits thousands.
+    StemEmptyWord
+    // The argument held more than one word, and `word` is what
+    // arrived.  Snowball stems ONE word: a phrase handed to it is
+    // treated as a single long token, the suffix tests run against
+    // its last letters, and `running fast` stems to `running fast`
+    // with nothing said.  Tokenizing is the caller's job and this is
+    // the refusal that says so.
+    StemNotOneWord(word: Str)
+
+// The refusal as a sentence, ending without a full stop, suitable for
+// a log line or an error message the caller composes.
+//
+// ```novo
+// use stemerror
+//
+// fn main() [io]
+//     println(stemerror.message(StemNeedsLowercase("Running")))
+// ```
+pub fn message(e: StemError) -> Str []
+    todo("stemmer-nv.stemerror.message")
+
+// A short stable identifier for the refusal:
+// `"unsupported-language"`, `"needs-lowercase"`, `"empty-word"`,
+// `"not-one-word"`.
+//
+// Stable across releases, so a caller may branch on it and a test may
+// assert it.
+//
+// ```novo
+// use stemerror
+//
+// fn main() [io]
+//     println(stemerror.code(StemEmptyWord))       // empty-word
+// ```
+pub fn code(e: StemError) -> Str []
+    todo("stemmer-nv.stemerror.code")
+
+// Whether the refusal is decided by the caller's configuration rather
+// than by the token that met it.
+//
+// True for `StemUnsupportedLanguage`, which depends only on the
+// language and is therefore worth checking once at start-up with
+// `stemlang.require`.  False for the other three, which are facts
+// about one word and can only be met while stemming.
+//
+// A program that indexes a corpus wants the true ones to stop it
+// before it begins and the false ones to skip a token and carry on.
+//
+// ```novo
+// use stemerror
+//
+// fn main() [io]
+//     println("${stemerror.is_configuration_fault(StemUnsupportedLanguage("french"))}")   // true
+//     println("${stemerror.is_configuration_fault(StemEmptyWord)}")                       // false
+// ```
+pub fn is_configuration_fault(e: StemError) -> Bool []
+    todo("stemmer-nv.stemerror.is_configuration_fault")

@@ -1,0 +1,220 @@
+// stemword.nv — the entry point: one lower-case word in, one stem
+// out, and nothing remembered between calls.
+//
+// STEMMING IS A PURE FUNCTION OF THE WORD, SO THERE IS NO STEMMER
+//
+// `rust-stemmers` hands back a `Stemmer` and `snowballstemmer` a
+// `SnowballStemmer`, and in both the object holds nothing but the
+// choice of language.  There is no table to warm, no cache, no
+// buffer the second call reuses; the algorithm reads the word and
+// writes a shorter one.  So this package has no stemmer value at all,
+// and the language is the first argument.
+//
+// That is why the whole package is `core` and every row is `[]`.  It
+// is also a promise to the caller, and the promise has three
+// consequences worth stating.
+//
+//   1. The same word always stems to the same string, in this
+//      release.  A caller may memoise as aggressively as it likes —
+//      a hash map from word to stem in front of this package is
+//      always correct, and for a corpus with a Zipf distribution it
+//      removes most of the work.
+//   2. Nothing has to be shared between threads or torn down, and
+//      stemming a document needs no allocation the caller did not
+//      ask for.
+//   3. An index is comparable with ITSELF only.  Two versions of an
+//      algorithm may stem the same word differently, and Snowball
+//      does revise its algorithms; a query stemmed by a new version
+//      against terms stemmed by an old one simply misses.
+//      `algorithm_id` is published so an index can record which
+//      algorithm built it and a deployment can notice the change
+//      rather than serving quietly worse results.
+//
+// A STEM IS NOT A WORD
+//
+// The most common misuse of a stemmer is showing its output to a
+// person.  Porter2 answers `argument` for `argument` and `argu` for
+// `arguing`; `generously` becomes `generous`; `ugly` becomes `ugli`
+// by table.  None of these is a defect.  A
+// stem is an index key whose only job is that two related words
+// produce the same one, and it is frequently not a word of the
+// language at all.
+//
+// Nothing in a type system can stop a caller printing a `Str`, so the
+// rule is published where a reader meets it: here, in the doc comment
+// of `stem`, in the README's rules, and in the suites, which assert
+// `arguing -> argu` on purpose.  A program that shows search results
+// shows the original text and uses the stem only to find it.
+//
+// THE STEM AND THE EXPLANATION ARE TWO CALLS
+//
+// An indexer stems every token of every document — millions of calls
+// whose entire result is a string.  An explanation carries the steps
+// that fired and the tables that were consulted, which is an
+// allocation per token for something no indexer reads.  So `stem`
+// answers a `Str` and `explain` answers a `StemWord`, and a caller
+// reaches for the second one when a person asks why a word behaved
+// as it did.
+
+use stemerror
+use stemlang
+
+// A stem with the reason it came out that way.
+//
+// ```novo
+// use stemword
+//
+// fn main() [io]
+//     let w = stemword.word("skies", "sky", true, [])
+//     println("${w.by_exception}")        // true
+// ```
+pub struct StemWord
+    // The word as it was handed in.
+    source: Str
+    // The stem.  Frequently not a word: `arguing` gives `argu`.
+    text: Str
+    // Whether an exception table decided the answer rather than the
+    // steps.  True for the eleven words in `stemporter.exceptions`
+    // and for the seven in `stemporter.invariants`.
+    by_exception: Bool
+    // The names of the passes that changed the word, in the order
+    // they ran, as `stemporter.step_name` spells them.  Empty when
+    // the word did not move or when a table decided it.
+    steps: [Str]
+
+// A stem value.
+//
+// The constructor exists because a struct declared in one module
+// cannot be written as a literal in another, and because a test wants
+// to state the explanation it expects.
+//
+// ```novo
+// use stemword
+//
+// fn main() [io]
+//     println(stemword.word("hoping", "hope", false, ["1b"]).text)   // hope
+// ```
+pub fn word(source: Str, text: Str, by_exception: Bool, steps: [Str]) -> StemWord []
+    todo("stemmer-nv.stemword.word")
+
+// The stem of one lower-case word.
+//
+// **A stem is not a word.** `argument` stems to `argument` and
+// `arguing` stems to `argu`; `ugly` stems to `ugli`.  Show the
+// original text to a person and use the stem only as an index key.
+//
+// Refuses rather than guessing.  `StemNeedsLowercase` when the word
+// holds an upper-case ASCII letter, because the algorithms are
+// defined on lower-case input and answering the word unchanged is
+// what silently breaks an index.  `StemEmptyWord` for the empty
+// string.  `StemNotOneWord` when the argument holds a space or a tab,
+// because Snowball stems one word and a phrase stems to itself.
+// `StemUnsupportedLanguage` for a language this release has not
+// ported — never English applied to another language's word.
+//
+// ```novo
+// use stemword
+// use stemerror
+//
+// fn main() [io]
+//     match stemword.stem(StemEnglish, "arguing")
+//         Ok(s)  => println(s)                      // argu
+//         Err(e) => println(stemerror.message(e))
+// ```
+pub fn stem(lang: stemlang.StemLang, word: Str) -> Result<Str, stemerror.StemError> []
+    todo("stemmer-nv.stemword.stem")
+
+// The stems of a list of words, in the same order.
+//
+// Refuses on the FIRST word it cannot stem, and the refusal names
+// that word, so a caller that hands in a tokenized document learns
+// which token was wrong rather than that something was.  An indexer
+// that would rather skip a bad token and carry on calls `stem` per
+// token and decides for itself; this function is for the caller who
+// wants the whole list or nothing.
+//
+// ```novo
+// use stemword
+//
+// fn main() [io]
+//     match stemword.stem_all(StemEnglish, ["ponies", "caresses", "cats"])
+//         Ok(ss) => println("${list.len(ss)}")      // 3
+//         Err(_) => println("a token could not be stemmed")
+// ```
+pub fn stem_all(lang: stemlang.StemLang, words: [Str]) -> Result<[Str], stemerror.StemError> []
+    todo("stemmer-nv.stemword.stem_all")
+
+// The stem of one word, with the passes that produced it.
+//
+// Refuses on exactly the conditions `stem` refuses on, and answers
+// exactly the stem `stem` answers.  The extra work is the trace, so
+// this is the call for a person asking why a word behaved as it did
+// and not the call for an indexer.
+//
+// ```novo
+// use stemword
+//
+// fn main() [io]
+//     match stemword.explain(StemEnglish, "news")
+//         Ok(w)  => println("${w.by_exception}")    // true
+//         Err(_) => println("this word could not be stemmed")
+// ```
+pub fn explain(lang: stemlang.StemLang, word: Str) -> Result<StemWord, stemerror.StemError> []
+    todo("stemmer-nv.stemword.explain")
+
+// The stem as a string.
+//
+// The deliberate unwrap, so that reading the answer out of an
+// explanation is a call a reviewer can see beside the rule that says
+// a stem is not shown to a person.
+//
+// ```novo
+// use stemword
+//
+// fn main() [io]
+//     println(stemword.text(stemword.word("skies", "sky", true, [])))   // sky
+// ```
+pub fn text(w: StemWord) -> Str []
+    todo("stemmer-nv.stemword.text")
+
+// Whether the stem differs from the word it came from.
+//
+// False for `atlas`, for `argument` and for every word the algorithm
+// leaves alone, and those are three different reasons for the same
+// answer: the invariant table, a word with no suffix in the tables,
+// and a suffix that lies outside R1.  `StemWord.by_exception` and
+// `StemWord.steps` are what tell them apart.
+//
+// ```novo
+// use stemword
+//
+// fn main() [io]
+//     println("${stemword.moved(stemword.word("atlas", "atlas", true, []))}")   // false
+// ```
+pub fn moved(w: StemWord) -> Bool []
+    todo("stemmer-nv.stemword.moved")
+
+// A stable identifier for the algorithm this release runs for a
+// language, such as `"english/porter2"` or `"english/porter1980"`.
+//
+// An index should record it beside its terms.  Two releases of this
+// package may stem the same word differently — Snowball revises its
+// algorithms, and a fixed defect in a step table changes stems — and
+// a query stemmed by the new algorithm against terms stemmed by the
+// old one does not fail, it just misses.  Comparing this string with
+// the one the index was built under is how a deployment notices that
+// it owes itself a reindex.
+//
+// Answers `StemUnsupportedLanguage` for a language this release
+// cannot stem, because there is no algorithm to identify.
+//
+// ```novo
+// use stemword
+//
+// fn main() [io]
+//     match stemword.algorithm_id(StemEnglish)
+//         Ok(id) => println(id)                     // english/porter2
+//         Err(_) => println("no algorithm for that language")
+// ```
+pub fn algorithm_id(lang: stemlang.StemLang) -> Result<Str, stemerror.StemError> []
+    todo("stemmer-nv.stemword.algorithm_id")

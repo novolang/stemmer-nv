@@ -1,0 +1,256 @@
+// stemporter.nv — the English (Porter2) algorithm: its eight steps
+// named as values, and its two exception tables published as DATA.
+//
+// THE EXCEPTIONS ARE A TABLE, NOT A PILE OF BRANCHES
+//
+// Every implementation of Porter2 contains the same two lists.  One
+// maps eleven words to a stem the steps would not produce — `skis` to
+// `ski`, `dying` to `die`, `ugly` to `ugli` — and is consulted before
+// any step runs.  The other names seven words that are their own
+// stem: `sky`, `news`, `howe`, `atlas`, `cosmos`, `bias`, `andes`.
+// A third, shorter list names the eight words that stop after step
+// 1a: `inning`, `outing`, `canning`, `herring`, `earring`,
+// `proceed`, `exceed`, `succeed`.
+//
+// In the generated C stemmers those lists are `among` tables the
+// reader cannot see; in most ports they are an `if` chain.  Here they
+// are functions that answer lists, because the question a user brings
+// to a stemmer is almost never "what does this stem to" — it is "why
+// did THIS word not move", and `is_invariant("news")` answers it in
+// one call.  Publishing them also makes them testable against the
+// upstream `voc.txt` directly, rather than through a stem.
+//
+// THE STEPS ARE VALUES, SO THE ALGORITHM CAN BE READ
+//
+// Porter2 is eight passes in a fixed order, each removing at most one
+// suffix.  `steps` answers that order, `step_name` gives each pass
+// the name the Snowball page uses, and `apply_step` runs one.  A
+// reader comparing this package with another implementation can then
+// walk a word through the passes and see where the two diverge, which
+// is a debugging session that otherwise means printing from inside
+// somebody's C.
+//
+// `apply_step` works in the algorithm's INTERNAL notation, in which a
+// consonant `y` has been written `Y` by `stemregion.mark_consonant_y`
+// and R1 and R2 are recomputed from the marked form.  That notation
+// never reaches `stemword.stem`, which unmarks before it answers.
+//
+// WHY PORTER'S 1980 ALGORITHM IS STILL HERE
+//
+// `StemPorter` is not a legacy alias for `StemEnglish`.  The two
+// disagree on ordinary words, and a paper that quotes a retrieval
+// score quotes it against one of them.  So the original five steps
+// are ported too, reached through the same `apply_step` with the
+// language chosen in `stemword.stem`, and a caller reproducing
+// published numbers can say which algorithm it used.
+
+// One pass of the English algorithm.
+//
+// The names are the Snowball English page's own section headings.
+//
+// ```novo
+// use stemporter
+//
+// fn main() [io]
+//     println(stemporter.step_name(StemStep1a))    // 1a
+// ```
+pub enum StemStep
+    // Remove a trailing `'`, `'s` or `'s'`.  Porter2 only; Porter's
+    // 1980 algorithm has no step 0.
+    StemStep0
+    // The plural table: `sses` to `ss`, `ied` and `ies` to `i` or
+    // `ie` by length, a trailing `s` removed when the word holds a
+    // vowel before the last two letters, and `us` and `ss` left
+    // alone.  This is the step the eight post-1a exceptions stop
+    // after.
+    StemStep1a
+    // The past and progressive table: `eed` and `eedly` to `ee` in
+    // R1, and `ed`, `edly`, `ing` and `ingly` removed when the rest
+    // holds a vowel — after which a double letter is halved and a
+    // short word gets its `e` back.
+    StemStep1b
+    // A trailing `y` or `Y` becomes `i` when it is preceded by a
+    // non-vowel and the word is longer than two letters.
+    StemStep1c
+    // The long derivational table: `ization` to `ize`, `fulness` to
+    // `ful`, `ousli` to `ous` and thirty more, each only when the
+    // suffix lies in R1.
+    StemStep2
+    // The second derivational table: `ational` to `ate`, `icate` to
+    // `ic`, `ative` deleted in R2, and the rest in R1.
+    StemStep3
+    // The noun-suffix table: `al`, `ance`, `ement`, `ment`, `ism`,
+    // `iti` and the rest deleted when they lie in R2.
+    StemStep4
+    // The last letter: a trailing `e` removed when it lies in R2, or
+    // in R1 and not after a short syllable; a trailing `l` removed
+    // when it lies in R2 after another `l`.
+    StemStep5
+
+// A word and the stem an exception table gives it.
+//
+// ```novo
+// use stemporter
+//
+// fn main() [io]
+//     let x = stemporter.exception("skis", "ski")
+//     println("${x.word} ${x.stem}")       // skis ski
+// ```
+pub struct StemException
+    // The word as it appears in the table, lower-case.
+    word: Str
+    // The stem the table gives it, which is not always a word:
+    // `ugly` maps to `ugli`.
+    stem: Str
+
+// An exception value.
+//
+// The constructor exists because a struct declared in one module
+// cannot be written as a literal in another, and because a test wants
+// to state the pair it expects.
+//
+// ```novo
+// use stemporter
+//
+// fn main() [io]
+//     println(stemporter.exception("dying", "die").stem)    // die
+// ```
+pub fn exception(word: Str, stem: Str) -> StemException []
+    todo("stemmer-nv.stemporter.exception")
+
+// The eight passes of the Porter2 algorithm, in the order they run.
+//
+// ```novo
+// use stemporter
+//
+// fn main() [io]
+//     for s in stemporter.steps()
+//         println(stemporter.step_name(s))
+// ```
+pub fn steps() -> [StemStep] []
+    todo("stemmer-nv.stemporter.steps")
+
+// The Snowball page's name for a pass: `"0"`, `"1a"`, `"1b"`, `"1c"`,
+// `"2"`, `"3"`, `"4"`, `"5"`.
+//
+// Stable across releases, so a test and a log line may both use it.
+//
+// ```novo
+// use stemporter
+//
+// fn main() [io]
+//     println(stemporter.step_name(StemStep5))     // 5
+// ```
+pub fn step_name(s: StemStep) -> Str []
+    todo("stemmer-nv.stemporter.step_name")
+
+// One sentence saying what a pass does, ending without a full stop.
+//
+// For the reader walking a word through the algorithm, so the trace
+// `stemword.explain` answers can be printed with its reasons rather
+// than as a list of numbers.
+//
+// ```novo
+// use stemporter
+//
+// fn main() [io]
+//     println(stemporter.step_note(StemStep1a))
+// ```
+pub fn step_note(s: StemStep) -> Str []
+    todo("stemmer-nv.stemporter.step_note")
+
+// One pass of the algorithm applied to a word, answering the word
+// unchanged when the pass does not apply.
+//
+// The word is in the algorithm's internal notation: consonant `y`
+// written `Y`.  Pass a word through `steps` in order to reproduce
+// what `stemword.stem` does between the exception tables and the
+// unmarking.
+//
+// ```novo
+// use stemporter
+//
+// fn main() [io]
+//     println(stemporter.apply_step(StemStep1a, "ponies"))    // poni
+//     println(stemporter.apply_step(StemStep1a, "caress"))    // caress
+// ```
+pub fn apply_step(s: StemStep, word: Str) -> Str []
+    todo("stemmer-nv.stemporter.apply_step")
+
+// The eleven words the algorithm stems by table rather than by rule,
+// consulted before any step runs.
+//
+// `skis` to `ski`, `skies` to `sky`, `dying` to `die`, `lying` to
+// `lie`, `tying` to `tie`, `idly` to `idl`, `gently` to `gentl`,
+// `ugly` to `ugli`, `early` to `earli`, `only` to `onli`, `singly`
+// to `singl`.
+//
+// ```novo
+// use stemporter
+//
+// fn main() [io]
+//     println("${list.len(stemporter.exceptions())}")     // 11
+// ```
+pub fn exceptions() -> [StemException] []
+    todo("stemmer-nv.stemporter.exceptions")
+
+// The stem the exception table gives a word, or `None` when the word
+// is not in it.
+//
+// ```novo
+// use stemporter
+//
+// fn main() [io]
+//     match stemporter.exception_for("skies")
+//         Some(s) => println(s)                     // sky
+//         None    => println("stemmed by the rules")
+// ```
+pub fn exception_for(word: Str) -> ?Str []
+    todo("stemmer-nv.stemporter.exception_for")
+
+// The seven words that are their own stem: `sky`, `news`, `howe`,
+// `atlas`, `cosmos`, `bias`, `andes`.
+//
+// Each of them would otherwise lose a letter to step 1a — `news` to
+// `new`, `atlas` to `atla` — and each is a word whose plural-looking
+// `s` is not a plural.
+//
+// ```novo
+// use stemporter
+//
+// fn main() [io]
+//     println("${list.len(stemporter.invariants())}")     // 7
+// ```
+pub fn invariants() -> [Str] []
+    todo("stemmer-nv.stemporter.invariants")
+
+// Whether a word is in the invariant list, and therefore stems to
+// itself.
+//
+// The call that answers "why did this word not move".
+//
+// ```novo
+// use stemporter
+//
+// fn main() [io]
+//     println("${stemporter.is_invariant("news")}")      // true
+//     println("${stemporter.is_invariant("newness")}")   // false
+// ```
+pub fn is_invariant(word: Str) -> Bool []
+    todo("stemmer-nv.stemporter.is_invariant")
+
+// The eight words that stop after step 1a: `inning`, `outing`,
+// `canning`, `herring`, `earring`, `proceed`, `exceed`, `succeed`.
+//
+// A second, later table, applied after the plural step has run.
+// Without it, step 1b takes `inning` to `in` and `proceed` to
+// `proce`, which collide with unrelated terms in an index.
+//
+// ```novo
+// use stemporter
+//
+// fn main() [io]
+//     println("${list.len(stemporter.post_1a_invariants())}")   // 8
+// ```
+pub fn post_1a_invariants() -> [Str] []
+    todo("stemmer-nv.stemporter.post_1a_invariants")

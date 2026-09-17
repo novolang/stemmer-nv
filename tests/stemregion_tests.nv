@@ -1,0 +1,152 @@
+// stemregion_tests.nv — R1, R2, the short-syllable rule and the `y`
+// marking, asserted directly rather than inferred from a stem.
+//
+// RED ON PURPOSE.
+//
+// Every vector here is a worked example from the Snowball site: the
+// region definitions on its introduction page, and the short-syllable
+// and short-word examples on its English (Porter2) page.  Asserting
+// them directly is the point of publishing the computation: when this
+// package and another implementation disagree about a stem, this is
+// the suite that says which of them has the region wrong.
+
+use std.test
+use stemregion
+
+// The regions, or a pair no vector can be confused with.
+fn regions_of(w: Str) -> stemregion.StemRegions
+    match stemregion.regions(StemEnglish, w)
+        Ok(r)  => r
+        Err(_) => stemregion.at(0 - 1, 0 - 1)
+
+@test
+fn test_the_regions_of_the_snowball_page_s_three_examples() [io]
+    // `beautiful`: R1 is `iful` and R2 is `ul`.  `beauty`: R1 is `y`
+    // and R2 is empty.  `beau`: both are empty.
+    test.case("beautiful has R1 at 5 and R2 at 7")
+    let a = regions_of("beautiful")
+    test.assert(a.r1 == 5)
+    test.assert(a.r2 == 7)
+
+    test.case("beauty has R1 at 5 and an empty R2 at the end of the word")
+    let b = regions_of("beauty")
+    test.assert(b.r1 == 5)
+    test.assert(b.r2 == 6)
+
+    test.case("beau has both regions empty")
+    let c = regions_of("beau")
+    test.assert(c.r1 == 4)
+    test.assert(c.r2 == 4)
+
+    test.case("and R2 never begins before R1")
+    test.assert(a.r2 >= a.r1)
+    test.assert(c.r2 >= c.r1)
+
+@test
+fn test_the_three_prefixes_that_set_r1_explicitly() [io]
+    // `gener`, `commun`, `arsen`.  Without the override the whole
+    // `generate`, `general`, `generic`, `generous` family collapses
+    // to `gener`, which is what the Snowball English page records.
+    test.case("there are three of them")
+    test.assert(list.len(stemregion.english_r1_prefixes()) == 3)
+
+    test.case("and the first is gener")
+    test.assert(stemregion.english_r1_prefixes()[0] == "gener")
+
+    test.case("a gener word has R1 immediately after the prefix")
+    test.assert(regions_of("generous").r1 == 5)
+
+@test
+fn test_the_regions_are_stated_as_a_value() [io]
+    test.case("the constructor takes the two offsets")
+    let r = stemregion.at(5, 7)
+    test.assert(r.r1 == 5)
+    test.assert(r.r2 == 7)
+
+@test
+fn test_a_language_this_release_cannot_stem_is_refused_here_too() [io]
+    // A region computed under the wrong vowel set is a plausible
+    // number, which is the worst kind of wrong answer.
+    test.case("french regions are refused, not computed with english vowels")
+    match stemregion.regions(StemFrench, "manges")
+        Ok(_)  => test.fail("french has its own vowel set and is not ported")
+        Err(_) => test.assert(true)
+
+    test.case("and so is the vowel test itself")
+    match stemregion.is_vowel(StemFrench, "manges", 1)
+        Ok(_)  => test.fail("the french vowel set includes the accented letters")
+        Err(_) => test.assert(true)
+
+@test
+fn test_the_english_vowel_set() [io]
+    test.case("a, e, i, o and u are vowels")
+    match stemregion.is_vowel(StemEnglish, "beau", 0)
+        Err(_) => test.fail("english is an available language")
+        Ok(v)  => test.assert(v)
+
+    test.case("b is not")
+    match stemregion.is_vowel(StemEnglish, "beau", 1)
+        Err(_) => test.fail("english is an available language")
+        Ok(v)  => test.assert(v == false)
+
+    test.case("and a position outside the word answers false rather than refusing")
+    match stemregion.is_vowel(StemEnglish, "beau", 40)
+        Err(_) => test.fail("an out-of-range index is not a refusal")
+        Ok(v)  => test.assert(v == false)
+
+@test
+fn test_the_consonant_y_is_marked_before_anything_else_runs() [io]
+    // A `y` at the start of a word or after a vowel is a consonant;
+    // every other `y` is a vowel.  Marking it is why `say` keeps its
+    // `y` and `cry` does not.
+    test.case("a leading y is a consonant")
+    test.assert(stemregion.mark_consonant_y("youth") == "Youth")
+
+    test.case("a y after a vowel is a consonant")
+    test.assert(stemregion.mark_consonant_y("toy") == "toY")
+    test.assert(stemregion.mark_consonant_y("say") == "saY")
+
+    test.case("a y after a consonant is a vowel and is left alone")
+    test.assert(stemregion.mark_consonant_y("cry") == "cry")
+
+    test.case("and a word with no y is unchanged")
+    test.assert(stemregion.mark_consonant_y("beautiful") == "beautiful")
+
+@test
+fn test_the_short_syllable_and_the_short_word() [io]
+    // The Snowball English page's own examples.  `rap`, `trap` and
+    // `entrap` end with a short syllable; `uproot`, `bestow` and
+    // `disturb` do not.  A word is SHORT when it ends in one and R1
+    // is empty: `bed`, `shed` and `shred` are short, `bead`, `embed`
+    // and `beds` are not.
+    test.case("rap ends with a short syllable")
+    match stemregion.is_short_syllable(StemEnglish, "rap", 1)
+        Err(_) => test.fail("english is an available language")
+        Ok(s)  => test.assert(s)
+
+    test.case("bestow does not")
+    match stemregion.is_short_syllable(StemEnglish, "bestow", 4)
+        Err(_) => test.fail("english is an available language")
+        Ok(s)  => test.assert(s == false)
+
+    test.case("bed, shed and shred are short words")
+    match stemregion.is_short_word(StemEnglish, "bed")
+        Err(_) => test.fail("english is an available language")
+        Ok(s)  => test.assert(s)
+
+    match stemregion.is_short_word(StemEnglish, "shred")
+        Err(_) => test.fail("english is an available language")
+        Ok(s)  => test.assert(s)
+
+    test.case("bead, embed and beds are not, for three different reasons")
+    match stemregion.is_short_word(StemEnglish, "bead")
+        Err(_) => test.fail("english is an available language")
+        Ok(s)  => test.assert(s == false)
+
+    match stemregion.is_short_word(StemEnglish, "embed")
+        Err(_) => test.fail("english is an available language")
+        Ok(s)  => test.assert(s == false)
+
+    match stemregion.is_short_word(StemEnglish, "beds")
+        Err(_) => test.fail("english is an available language")
+        Ok(s)  => test.assert(s == false)

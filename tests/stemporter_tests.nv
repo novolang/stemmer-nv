@@ -1,0 +1,119 @@
+// stemporter_tests.nv — the algorithm as eight named passes, and the
+// three exception tables as data anybody can read.
+//
+// RED ON PURPOSE.
+//
+// The lists asserted here are the Snowball English (Porter2) page's
+// own, word for word.  They are asserted as LISTS rather than through
+// stems, because a table that lost a word would otherwise show up
+// only as one wrong stem somewhere in a corpus.
+
+use std.test
+use stemporter
+
+@test
+fn test_the_passes_are_eight_values_in_a_fixed_order() [io]
+    test.case("Porter2 is eight passes")
+    test.assert(list.len(stemporter.steps()) == 8)
+
+    test.case("and they run in the order the Snowball page prints them")
+    let ss = stemporter.steps()
+    test.assert(stemporter.step_name(ss[0]) == "0")
+    test.assert(stemporter.step_name(ss[1]) == "1a")
+    test.assert(stemporter.step_name(ss[2]) == "1b")
+    test.assert(stemporter.step_name(ss[3]) == "1c")
+    test.assert(stemporter.step_name(ss[7]) == "5")
+
+    test.case("each pass says in one sentence what it does")
+    test.assert(str.len(stemporter.step_note(StemStep1a)) > 0)
+    test.assert(stemporter.step_note(StemStep1a) != stemporter.step_note(StemStep5))
+
+@test
+fn test_one_pass_can_be_run_on_its_own() [io]
+    // This is the call a reader uses to find where this package and
+    // another implementation diverge, without printing from inside
+    // somebody else's C.
+    test.case("step 1a applied alone gives the plural table's answer")
+    test.assert(stemporter.apply_step(StemStep1a, "ponies") == "poni")
+    test.assert(stemporter.apply_step(StemStep1a, "caresses") == "caress")
+
+    test.case("and a pass that does not apply answers the word unchanged")
+    test.assert(stemporter.apply_step(StemStep1a, "caress") == "caress")
+    test.assert(stemporter.apply_step(StemStep0, "cats") == "cats")
+
+    test.case("step 0 takes the apostrophes off")
+    test.assert(stemporter.apply_step(StemStep0, "cat's") == "cat")
+
+@test
+fn test_the_eleven_word_exception_table() [io]
+    // Consulted before any pass runs.  Every one of these is a word
+    // the passes would take somewhere else.
+    test.case("the table holds eleven words")
+    test.assert(list.len(stemporter.exceptions()) == 11)
+
+    test.case("and each maps to the stem the page gives it")
+    match stemporter.exception_for("skis")
+        None    => test.fail("skis is in the exception table")
+        Some(s) => test.assert(s == "ski")
+
+    match stemporter.exception_for("skies")
+        None    => test.fail("skies is in the exception table")
+        Some(s) => test.assert(s == "sky")
+
+    match stemporter.exception_for("dying")
+        None    => test.fail("dying is in the exception table")
+        Some(s) => test.assert(s == "die")
+
+    test.case("including the four whose stem is not a word")
+    match stemporter.exception_for("ugly")
+        None    => test.fail("ugly is in the exception table")
+        Some(s) => test.assert(s == "ugli")
+
+    match stemporter.exception_for("singly")
+        None    => test.fail("singly is in the exception table")
+        Some(s) => test.assert(s == "singl")
+
+    test.case("and an ordinary word is not in it")
+    test.assert_none(stemporter.exception_for("cats"))
+
+@test
+fn test_the_seven_invariant_words() [io]
+    // `sky`, `news`, `howe`, `atlas`, `cosmos`, `bias`, `andes`.
+    // Every one of them ends in a letter step 1a would take, and none
+    // of them is a plural.
+    test.case("the invariant list holds seven words")
+    test.assert(list.len(stemporter.invariants()) == 7)
+
+    test.case("and each of them is its own stem")
+    test.assert(stemporter.is_invariant("sky"))
+    test.assert(stemporter.is_invariant("news"))
+    test.assert(stemporter.is_invariant("howe"))
+    test.assert(stemporter.is_invariant("atlas"))
+    test.assert(stemporter.is_invariant("cosmos"))
+    test.assert(stemporter.is_invariant("bias"))
+    test.assert(stemporter.is_invariant("andes"))
+
+    test.case("a word that merely looks like one is not in the list")
+    // `newness` shares four letters with `news` and stems by rule.
+    test.assert(stemporter.is_invariant("newness") == false)
+    test.assert(stemporter.is_invariant("skies") == false)
+
+@test
+fn test_the_eight_words_that_stop_after_step_1a() [io]
+    // A second table, applied later than the first.  Without it step
+    // 1b takes `inning` to `in` and `proceed` to `proce`, which
+    // collide with unrelated terms.
+    test.case("the post-1a list holds eight words")
+    test.assert(list.len(stemporter.post_1a_invariants()) == 8)
+
+    test.case("and it is a different list from the invariant one")
+    let post = stemporter.post_1a_invariants()
+    test.assert(post[0] != "sky")
+    test.assert(list.len(post) != list.len(stemporter.invariants()))
+
+@test
+fn test_an_exception_pair_can_be_stated() [io]
+    test.case("the constructor pairs a word with the stem a table gives it")
+    let x = stemporter.exception("gently", "gentl")
+    test.assert(x.word == "gently")
+    test.assert(x.stem == "gentl")

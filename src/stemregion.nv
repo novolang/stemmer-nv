@@ -1,0 +1,203 @@
+// stemregion.nv — R1, R2 and the short-syllable rule, published, and
+// the one piece of Snowball a reader most often wants to look at.
+//
+// WHY THE REGIONS ARE A PUBLIC ANSWER AND NOT A PRIVATE VARIABLE
+//
+// Almost every step of almost every Snowball algorithm is written the
+// same way: "search for the longest suffix among this list, and if it
+// is in R1, delete it".  R1 and R2 are therefore the reason a suffix
+// was or was not removed, in every language.  The Snowball site
+// defines them once, on its introduction page, and every algorithm
+// page then refers to them by name.
+//
+// R1 is the region after the first non-vowel that follows a vowel, or
+// the end of the word when there is no such non-vowel.  R2 is the
+// same rule applied again inside R1.  For `beautiful`, R1 begins at
+// `iful` and R2 at `ul`; for `beauty` R1 is `y` and R2 is empty; for
+// `beau` both are empty.  Those three are the Snowball site's own
+// worked examples.
+//
+// A caller reading `generously -> generous` while `beautiful` gives
+// `beauti` wants to know why, and the answer is R1 — not a suffix
+// table.  So
+// `regions` is public, it is the same computation the steps use, and
+// a test can assert it directly instead of inferring it from a stem.
+//
+// THE THREE PREFIXES ARE THE ALGORITHM, NOT A PATCH
+//
+// The English algorithm overrides R1 for words beginning `gener`,
+// `commun` or `arsen`, setting it to the region after that prefix.
+// Without the override, `generously` has R1 beginning at `ously` and
+// loses more than it should: the Snowball English page records that
+// without the override, the whole `generate`, `general`, `generic`,
+// `generous` family collapses to `gener`.  The three prefixes are
+// published here as data, by `english_r1_prefixes`, because a reader
+// who meets one family keeping more of itself than its neighbours has
+// no other way to find out why.
+//
+// THE REGIONS ARE LANGUAGE-DEPENDENT, SO THEY TAKE THE LANGUAGE
+//
+// The RULE is shared; the vowel set is not.  French counts the
+// accented vowels, German folds its umlauts first, Russian's vowels
+// are Cyrillic.  So every function here takes a `StemLang` and
+// answers a `Result`, and a language this release cannot stem is
+// `StemUnsupportedLanguage` here exactly as it is in `stemword.stem`.
+// A region computed under the wrong vowel set is a plausible number,
+// which is the worst kind.
+
+use stemerror
+use stemlang
+
+// Where R1 and R2 begin in a word, as byte offsets from its start.
+//
+// An offset equal to the length of the word means the region is
+// empty, which is the Snowball convention and is common: `beau` has
+// both regions empty.
+//
+// ```novo
+// use stemregion
+//
+// fn main() [io]
+//     let r = stemregion.at(5, 7)
+//     println("${r.r1} ${r.r2}")      // 5 7
+// ```
+pub struct StemRegions
+    // The byte offset at which R1 begins.
+    r1: Int
+    // The byte offset at which R2 begins.  Never less than `r1`.
+    r2: Int
+// A regions value.
+//
+// The constructor exists because a struct declared in one module
+// cannot be written as a literal in another, and because a test wants
+// to state the regions it expects.
+//
+// ```novo
+// use stemregion
+//
+// fn main() [io]
+//     println("${stemregion.at(3, 5).r2}")     // 5
+// ```
+pub fn at(r1: Int, r2: Int) -> StemRegions []
+    todo("stemmer-nv.stemregion.at")
+
+// Where R1 and R2 begin in a word, under this language's vowel set.
+//
+// For English this applies the `gener`, `commun` and `arsen`
+// override; for the other languages it is the plain rule from the
+// Snowball introduction page.  Answers
+// `StemUnsupportedLanguage` for a language this release cannot stem,
+// because the vowel set is part of the algorithm and guessing it
+// would produce a number that looks right.
+//
+// ```novo
+// use stemregion
+// use stemerror
+//
+// fn main() [io]
+//     match stemregion.regions(StemEnglish, "beautiful")
+//         Ok(r)  => println("${r.r1} ${r.r2}")     // 5 7
+//         Err(e) => println(stemerror.message(e))
+// ```
+pub fn regions(lang: stemlang.StemLang, word: Str) -> Result<StemRegions, stemerror.StemError> []
+    todo("stemmer-nv.stemregion.regions")
+
+// Whether the byte at `index` is a vowel in this language.
+//
+// For English the vowels are `a`, `e`, `i`, `o`, `u` and `y`, with
+// `y` counted as a vowel only where `mark_consonant_y` has not
+// already ruled it a consonant.  An index outside the word answers
+// `false` rather than refusing, because the step rules ask about the
+// position before the start of the word.
+//
+// ```novo
+// use stemregion
+//
+// fn main() [io]
+//     match stemregion.is_vowel(StemEnglish, "toy", 1)
+//         Ok(v)  => println("${v}")         // true
+//         Err(_) => println("this release cannot stem that language")
+// ```
+pub fn is_vowel(lang: stemlang.StemLang, word: Str,
+                index: Int) -> Result<Bool, stemerror.StemError> []
+    todo("stemmer-nv.stemregion.is_vowel")
+
+// The word with every `y` that acts as a consonant replaced by `Y`.
+//
+// The English algorithm's first act.  A `y` at the start of the word,
+// or a `y` after a vowel, is a consonant; every other `y` is a vowel.
+// Marking it makes the rest of the algorithm a plain test against a
+// vowel set, and it is why `say` does not lose its `y` and `cry`
+// does.  The marks are removed again before the stem is answered, so
+// no `Y` ever reaches a caller of `stemword.stem`.
+//
+// This is the exception to the "lower-case only" rule, and it is
+// internal: the capital is this algorithm's own notation, not the
+// caller's text.
+//
+// ```novo
+// use stemregion
+//
+// fn main() [io]
+//     println(stemregion.mark_consonant_y("youth"))    // Youth
+//     println(stemregion.mark_consonant_y("toy"))      // toY
+//     println(stemregion.mark_consonant_y("cry"))      // cry
+// ```
+pub fn mark_consonant_y(word: Str) -> Str []
+    todo("stemmer-nv.stemregion.mark_consonant_y")
+
+// Whether the word ends in a short syllable at `index`.
+//
+// A short syllable is a vowel followed by a non-vowel other than `w`,
+// `x` or a marked `Y` and preceded by a non-vowel, or a vowel at the
+// start of the word followed by a non-vowel.  `rap`, `trap` and `hop`
+// end in one; `uproot`, `bestow` and `disturb` do not.  Those six are
+// the Snowball English page's own examples.
+//
+// ```novo
+// use stemregion
+//
+// fn main() [io]
+//     match stemregion.is_short_syllable(StemEnglish, "hop", 1)
+//         Ok(s)  => println("${s}")         // true
+//         Err(_) => println("this release cannot stem that language")
+// ```
+pub fn is_short_syllable(lang: stemlang.StemLang, word: Str,
+                         index: Int) -> Result<Bool, stemerror.StemError> []
+    todo("stemmer-nv.stemregion.is_short_syllable")
+
+// Whether the word is SHORT: it ends in a short syllable and R1 is
+// empty.
+//
+// This is the test that decides whether step 1b puts an `e` back.
+// `hop` is short, so `hoping` stems to `hope`; `beautiful` is not.
+// It is published because a caller comparing this package against
+// another implementation almost always disagrees here first.
+//
+// ```novo
+// use stemregion
+//
+// fn main() [io]
+//     match stemregion.is_short_word(StemEnglish, "hop")
+//         Ok(s)  => println("${s}")         // true
+//         Err(_) => println("this release cannot stem that language")
+// ```
+pub fn is_short_word(lang: stemlang.StemLang, word: Str) -> Result<Bool, stemerror.StemError> []
+    todo("stemmer-nv.stemregion.is_short_word")
+
+// The prefixes for which the English algorithm sets R1 explicitly:
+// `gener`, `commun`, `arsen`.
+//
+// When a word begins with one of these, R1 begins immediately after
+// it rather than where the general rule would put it.  Three words,
+// published as a list rather than written into a branch, so a reader
+// who meets `generously -> generous` can find the reason.
+//
+// ```novo
+// use stemregion
+//
+// fn main() [io]
+//     println("${list.len(stemregion.english_r1_prefixes())}")   // 3
+// ```
+pub fn english_r1_prefixes() -> [Str] []
+    todo("stemmer-nv.stemregion.english_r1_prefixes")

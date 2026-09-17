@@ -1,0 +1,192 @@
+// stemword_tests.nv — the Porter2 vocabulary vectors, and the four
+// things `stem` refuses to guess at.
+//
+// RED ON PURPOSE: every assertion reaches `not implemented:
+// stemmer-nv.<module>.<fn>`.
+//
+// The pairs are from the Snowball project's own `voc.txt` and
+// `output.txt` for the English algorithm, and from the worked
+// examples on the Snowball English (Porter2) page.  They are chosen
+// to exercise one rule each rather than to be many: the step-1a
+// plural table, the double-letter and short-word halves of step 1b,
+// the `y` rule of step 1c, both exception tables, and the R2 test
+// that leaves `argument` alone.
+
+use std.test
+use stemerror
+use stemlang
+use stemporter
+use stemword
+
+// The stem, or a marker no vector can be confused with.
+fn stemmed(lang: stemlang.StemLang, w: Str) -> Str
+    match stemword.stem(lang, w)
+        Ok(s)  => s
+        Err(_) => "<refused>"
+
+@test
+fn test_the_step_1a_plural_table() [io]
+    // The Snowball English page's own table: `sses` to `ss`, `ies`
+    // and `ied` to `i` when more than one letter precedes them and to
+    // `ie` when one does, `us` and `ss` untouched, and a bare `s`
+    // deleted only when a vowel precedes it that is not the letter
+    // immediately before.
+    test.case("sses becomes ss")
+    test.assert(stemmed(StemEnglish, "caresses") == "caress")
+
+    test.case("ies becomes i after more than one letter")
+    test.assert(stemmed(StemEnglish, "ponies") == "poni")
+
+    test.case("and ie after exactly one")
+    test.assert(stemmed(StemEnglish, "ties") == "tie")
+
+    test.case("ss is left alone")
+    test.assert(stemmed(StemEnglish, "caress") == "caress")
+
+    test.case("a plural s goes")
+    test.assert(stemmed(StemEnglish, "cats") == "cat")
+    test.assert(stemmed(StemEnglish, "gaps") == "gap")
+    test.assert(stemmed(StemEnglish, "kiwis") == "kiwi")
+
+    test.case("but not when the vowel is the letter immediately before it")
+    // `gas` and `this` keep their `s`; this is the clause every
+    // hand-written plural stripper gets wrong.
+    test.assert(stemmed(StemEnglish, "gas") == "gas")
+    test.assert(stemmed(StemEnglish, "this") == "this")
+
+@test
+fn test_step_1b_halves_a_double_and_restores_a_short_word_s_e() [io]
+    // The pair that shows why `stemregion.is_short_word` is public.
+    // Both words lose `ing`; one is left with a double letter and one
+    // is left short, and the two rules answer differently.
+    test.case("hopping loses ing, then loses the doubled p")
+    test.assert(stemmed(StemEnglish, "hopping") == "hop")
+
+    test.case("hoping loses ing, is short, and gets its e back")
+    test.assert(stemmed(StemEnglish, "hoping") == "hope")
+
+@test
+fn test_step_1c_turns_a_consonant_preceded_y_into_i() [io]
+    test.case("happy gives happi, which is not a word and is the point")
+    test.assert(stemmed(StemEnglish, "happy") == "happi")
+
+    test.case("cry gives cri")
+    test.assert(stemmed(StemEnglish, "cry") == "cri")
+
+    test.case("by is two letters and keeps its y")
+    test.assert(stemmed(StemEnglish, "by") == "by")
+
+    test.case("say has a vowel before the y and keeps it")
+    test.assert(stemmed(StemEnglish, "say") == "say")
+
+@test
+fn test_a_stem_is_not_a_word() [io]
+    // Published as a rule because the commonest misuse of a stemmer
+    // is showing its output to a person.  These two words are related
+    // and stem apart, which is the honest behaviour of the algorithm.
+    test.case("argument keeps its ment, because ment is not in R2")
+    test.assert(stemmed(StemEnglish, "argument") == "argument")
+
+    test.case("arguing gives argu, which is not a word")
+    test.assert(stemmed(StemEnglish, "arguing") == "argu")
+
+    test.case("and the gener prefix keeps its family together")
+    test.assert(stemmed(StemEnglish, "generously") == "generous")
+    test.assert(stemmed(StemEnglish, "generally") == "general")
+    test.assert(stemmed(StemEnglish, "generic") == "generic")
+
+@test
+fn test_the_two_english_algorithms_disagree_and_are_two_arms() [io]
+    // The reason `StemPorter` is not an alias.  Porter's 1980 step 1a
+    // maps `ies` to `i` unconditionally; Porter2 maps it to `ie` when
+    // one letter precedes.  A paper quoting retrieval numbers quotes
+    // them against one of these.
+    test.case("Porter2 answers tie")
+    test.assert(stemmed(StemEnglish, "ties") == "tie")
+
+    test.case("the 1980 algorithm answers ti")
+    test.assert(stemmed(StemPorter, "ties") == "ti")
+
+    test.case("and each names itself, so an index can record which built it")
+    match stemword.algorithm_id(StemEnglish)
+        Err(_) => test.fail("english is an available language")
+        Ok(id) => test.assert(id == "english/porter2")
+
+    match stemword.algorithm_id(StemPorter)
+        Err(_) => test.fail("porter is an available language")
+        Ok(id) => test.assert(id != "english/porter2")
+
+@test
+fn test_stem_refuses_rather_than_answering_the_word_back() [io]
+    // Every one of these is a string the reference implementations
+    // hand straight back, unchanged and without a word said.
+    test.case("an upper-case letter is StemNeedsLowercase, not Running")
+    match stemword.stem(StemEnglish, "Running")
+        Ok(_)  => test.fail("Running is not lower-case and must not stem to itself")
+        Err(e) => test.assert(stemerror.code(e) == "needs-lowercase")
+
+    test.case("the empty string is StemEmptyWord")
+    match stemword.stem(StemEnglish, "")
+        Ok(_)  => test.fail("the empty string is not a word")
+        Err(e) => test.assert(stemerror.code(e) == "empty-word")
+
+    test.case("a phrase is StemNotOneWord, because Snowball stems one word")
+    match stemword.stem(StemEnglish, "running fast")
+        Ok(_)  => test.fail("a phrase stems to itself and says nothing")
+        Err(e) => test.assert(stemerror.code(e) == "not-one-word")
+
+    test.case("and an unported language never falls through to English")
+    match stemword.stem(StemFrench, "manges")
+        Ok(_)  => test.fail("english stemming applied to french is a half-working index")
+        Err(e) => test.assert(stemerror.code(e) == "unsupported-language")
+
+@test
+fn test_stem_all_keeps_the_order_and_names_the_token_that_failed() [io]
+    test.case("a tokenized document stems in place")
+    match stemword.stem_all(StemEnglish, ["ponies", "caresses", "cats"])
+        Err(_) => test.fail("three lower-case words stem")
+        Ok(ss) =>
+            test.assert(list.len(ss) == 3)
+            test.assert(ss[0] == "poni")
+            test.assert(ss[2] == "cat")
+
+    test.case("and one bad token refuses the whole list rather than half of it")
+    match stemword.stem_all(StemEnglish, ["cats", "Running"])
+        Ok(_)  => test.fail("a list with an upper-case token is not stemmable")
+        Err(e) => test.assert(stemerror.is_configuration_fault(e) == false)
+
+@test
+fn test_explain_says_why_a_word_did_not_move() [io]
+    // Three words that all stem to themselves, for three different
+    // reasons, which is exactly what a person asking "why" needs.
+    test.case("news did not move because it is in the invariant table")
+    match stemword.explain(StemEnglish, "news")
+        Err(_) => test.fail("news is a lower-case english word")
+        Ok(w)  =>
+            test.assert(w.by_exception)
+            test.assert(stemword.moved(w) == false)
+            test.assert(stemword.text(w) == "news")
+
+    test.case("argument did not move because ment lies outside R2")
+    match stemword.explain(StemEnglish, "argument")
+        Err(_) => test.fail("argument is a lower-case english word")
+        Ok(w)  =>
+            test.assert(w.by_exception == false)
+            test.assert(stemword.moved(w) == false)
+
+    test.case("and a word that moved names the passes that moved it")
+    match stemword.explain(StemEnglish, "hopping")
+        Err(_) => test.fail("hopping is a lower-case english word")
+        Ok(w)  =>
+            test.assert(stemword.moved(w))
+            test.assert(w.source == "hopping")
+            test.assert(list.len(w.steps) > 0)
+            test.assert(w.steps[0] == stemporter.step_name(StemStep1b))
+
+@test
+fn test_an_explanation_can_be_stated_and_compared() [io]
+    test.case("the constructor takes the four fields a caller can see")
+    let w = stemword.word("skies", "sky", true, [])
+    test.assert(stemword.text(w) == "sky")
+    test.assert(stemword.moved(w))
+    test.assert(w.by_exception)

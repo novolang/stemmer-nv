@@ -1,0 +1,64 @@
+[package]
+name        = "stemmer-nv"
+version     = "0.0.1"
+description = "Snowball stemming as a pure function of one lower-case word: the English (Porter2) algorithm with its R1 and R2 regions, its short-syllable rule, its invariant list and its step-1a exception table published as readable values rather than hidden branches, one closed enum over every Snowball language whose availability is answered before the first word instead of at it, and a named refusal for a language this release cannot stem so that nothing quietly falls through to English."
+license     = "Apache-2.0"
+
+# An INTERFACE release: every `pub fn` body is a `todo()`, so the
+# signatures and the effect rows are published and nothing is
+# implemented.  `novo pkg publish` recognises the shape and requires
+# both the draft stability and the 0.0.x version; the first
+# implementation is the 0.1.0 published over it.
+stability   = "draft"
+
+# `core`.  Every row is `[]`.  Stemming is a pure function of the
+# word: the same word always stems to the same string, nothing here
+# reads a dictionary file, a locale or a clock, and the language
+# arrives as an enum the caller holds rather than as an environment
+# setting.  So a search index can stem on a device with no filesystem,
+# and a test can drive every algorithm with no input at all.
+layer       = "core"
+
+category    = "text"
+
+tags        = ["stemmer", "snowball", "porter2", "porter", "stemming", "search", "information-retrieval", "text"]
+repository  = "https://github.com/novolang/stemmer-nv"
+maintainers = ["novo-lang"]
+novo        = ">= 0.9.0"
+
+# A library: no `main`, so `novo pkg build` type-checks and
+# effect-checks every module under `src/` and writes no binary.
+
+[docs.pages]
+"README.md" = "Snowball stemming, one lower-case word at a time"
+
+[dependencies]
+# None, and the omission that has to be argued is unicode-nv.
+#
+# REFUSED, for this release and named as revisitable.  The only
+# algorithm 0.1.0 will ship is English (Porter2), which is defined
+# entirely over the ASCII letters `a`..`z`: its vowel set is
+# `aeiouy`, its short-syllable rule tests ASCII consonants, and its
+# two exception tables are ASCII words.  Taking unicode-nv would put
+# its 245 KB of tables into every program that stems English and use
+# none of it.  A dependency can be added in a later release without
+# breaking a caller; one that is taken and unused is never removed.
+#
+# The algorithms that will force the question are named rather than
+# hidden, and they are the ones whose FIRST step is not stemming at
+# all: Greek, whose Snowball algorithm removes diacritics before it
+# looks at a suffix; Turkish, whose lower-casing maps `İ` to `i` and
+# `I` to `ı` and is wrong under any other locale's rule; and Russian,
+# Serbian and Armenian, whose alphabets have to be decoded from UTF-8
+# before a vowel can be tested.  Snowball's own generated stemmers
+# carry per-language character bitmaps rather than a Unicode database,
+# so even those need decoding and case folding, not general category
+# lookup.
+#
+# What a caller does instead, today: lower-case the word itself before
+# calling `stemword.stem`.  `stemcase.fold_ascii` does it for English
+# and every other Latin-alphabet language on the list;
+# `stemcase.needs_unicode_fold` answers true for exactly the languages
+# whose fold is beyond ASCII, and `stemcase.fold_note` is the sentence
+# saying what to do about each.  A caller that reaches one of those
+# folds it with unicode-nv and hands the folded word here.

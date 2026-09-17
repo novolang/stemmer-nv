@@ -1,0 +1,137 @@
+// stemcover_tests.nv — the language set, the case contract and the
+// error taxonomy, one written expectation each.
+//
+// RED ON PURPOSE, like every suite here.
+//
+// The three suites beside this one assert the ALGORITHM — the
+// vocabulary vectors, the passes, the regions.  This one exists so
+// that no public function ships without a written expectation of what
+// it answers, and so that the two decisions a caller meets before it
+// stems anything are asserted rather than only described: that the
+// enum is bigger than the shipping set, and that this package does
+// not lower-case for you.
+
+use std.test
+use stemcase
+use stemerror
+use stemlang
+
+@test
+fn test_the_enum_is_the_snowball_set_and_availability_is_data() [io]
+    // Adding an arm to a published enum breaks every caller that
+    // matches on it exhaustively, so the whole upstream list is
+    // declared once and what this release can stem is a separate,
+    // queryable fact.
+    test.case("the enum holds far more languages than the release ports")
+    test.assert(list.len(stemlang.all()) > list.len(stemlang.available()))
+    test.assert(list.len(stemlang.all()) > 20)
+
+    test.case("and 0.1.0 ships the two english algorithms and nothing else")
+    test.assert(list.len(stemlang.available()) == 2)
+    test.assert(stemlang.is_available(StemEnglish))
+    test.assert(stemlang.is_available(StemPorter))
+
+    test.case("every other arm is declared and not available")
+    test.assert(stemlang.is_available(StemFrench) == false)
+    test.assert(stemlang.is_available(StemRussian) == false)
+    test.assert(stemlang.is_available(StemTurkish) == false)
+
+@test
+fn test_require_is_the_start_up_check() [io]
+    // So that a misconfigured indexer stops while somebody is still
+    // watching the log, rather than at the first word of the first
+    // document inside a worker.
+    test.case("an available language passes through")
+    match stemlang.require(StemEnglish)
+        Err(_) => test.fail("english is available")
+        Ok(l)  => test.assert(stemlang.lang_name(l) == "english")
+
+    test.case("an unported one is refused, and the refusal names it")
+    match stemlang.require(StemDanish)
+        Ok(_)  => test.fail("danish is declared and not ported")
+        Err(e) => test.assert(stemerror.code(e) == "unsupported-language")
+
+    test.case("and that refusal is the one worth checking at start-up")
+    match stemlang.require(StemDanish)
+        Ok(_)  => test.fail("danish is declared and not ported")
+        Err(e) => test.assert(stemerror.is_configuration_fault(e))
+
+@test
+fn test_the_names_round_trip_and_the_codes_do_not_identify_an_algorithm() [io]
+    test.case("snowball's own names are what lang_name prints")
+    test.assert(stemlang.lang_name(StemEnglish) == "english")
+    test.assert(stemlang.lang_name(StemPorter) == "porter")
+    test.assert(stemlang.lang_name(StemNorwegian) == "norwegian")
+
+    test.case("and lang_named reads them back")
+    match stemlang.lang_named("swedish")
+        None    => test.fail("swedish is a snowball algorithm")
+        Some(l) => test.assert(stemlang.lang_name(l) == "swedish")
+
+    test.case("a name snowball has no algorithm for is None")
+    test.assert_none(stemlang.lang_named("klingon"))
+
+    test.case("the ISO code is not unique, so it cannot name an algorithm")
+    // Both english arms are `en`; `lang_name` is the identifier.
+    test.assert(stemlang.lang_code(StemEnglish) == "en")
+    test.assert(stemlang.lang_code(StemPorter) == "en")
+    test.assert(stemlang.lang_code(StemFrench) == "fr")
+
+@test
+fn test_the_case_contract_is_published_because_stem_does_not_fold() [io]
+    // A caller that stems `Running` and gets `Running` back has a
+    // silently broken index.  This package refuses instead, and this
+    // module is how a caller satisfies it.
+    test.case("fold_ascii is the whole preparation for a latin language")
+    test.assert(stemcase.fold_ascii("Running") == "running")
+    test.assert(stemcase.fold_ascii("ANDES") == "andes")
+
+    test.case("and it leaves everything that is not an ASCII letter alone")
+    test.assert(stemcase.fold_ascii("cat's") == "cat's")
+
+    test.case("is_prepared is the predicate stem refuses on")
+    test.assert(stemcase.is_prepared(StemEnglish, "running"))
+    test.assert(stemcase.is_prepared(StemEnglish, "Running") == false)
+    test.assert(stemcase.is_prepared(StemEnglish, "") == false)
+    test.assert(stemcase.is_prepared(StemEnglish, "running fast") == false)
+
+@test
+fn test_which_languages_need_more_than_an_ascii_fold() [io]
+    // The whole content of the refused unicode-nv dependency, stated
+    // as a value a caller branches on once, at start-up.
+    test.case("english needs nothing but fold_ascii")
+    test.assert(stemcase.needs_unicode_fold(StemEnglish) == false)
+    test.assert(stemcase.needs_unicode_fold(StemPorter) == false)
+    test.assert(stemcase.needs_unicode_fold(StemFrench) == false)
+
+    test.case("turkish does, because its I and its İ lower differently")
+    test.assert(stemcase.needs_unicode_fold(StemTurkish))
+
+    test.case("and so does every non-latin alphabet")
+    test.assert(stemcase.needs_unicode_fold(StemGreek))
+    test.assert(stemcase.needs_unicode_fold(StemRussian))
+    test.assert(stemcase.needs_unicode_fold(StemTamil))
+
+    test.case("each of them says in one sentence what a caller must do")
+    test.assert(str.len(stemcase.fold_note(StemTurkish)) > 0)
+    test.assert(stemcase.fold_note(StemTurkish) != stemcase.fold_note(StemEnglish))
+
+@test
+fn test_the_four_refusals_and_their_stable_codes() [io]
+    test.case("every refusal has a code a caller may branch on")
+    test.assert(stemerror.code(StemEmptyWord) == "empty-word")
+    test.assert(stemerror.code(StemNeedsLowercase("Running")) == "needs-lowercase")
+    test.assert(stemerror.code(StemNotOneWord("running fast")) == "not-one-word")
+    test.assert(stemerror.code(StemUnsupportedLanguage("french")) == "unsupported-language")
+
+    test.case("and a sentence a caller can log")
+    test.assert(str.len(stemerror.message(StemEmptyWord)) > 0)
+    test.assert(stemerror.message(StemEmptyWord) != stemerror.message(StemNotOneWord("a b")))
+
+    test.case("one of them is decided by configuration and three by the token")
+    // A corpus indexer stops on the first and skips a token on the
+    // other three.
+    test.assert(stemerror.is_configuration_fault(StemUnsupportedLanguage("french")))
+    test.assert(stemerror.is_configuration_fault(StemEmptyWord) == false)
+    test.assert(stemerror.is_configuration_fault(StemNeedsLowercase("Running")) == false)
+    test.assert(stemerror.is_configuration_fault(StemNotOneWord("a b")) == false)
