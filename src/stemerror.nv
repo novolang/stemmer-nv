@@ -67,6 +67,19 @@ pub enum StemError
     // the refusal that says so.
     StemNotOneWord(word: Str)
 
+// `StemError` is an `Error`, which is what lets
+// `Result<T, StemError>` exist at all — `stemword.stem`,
+// `stem_all`, `explain` and `algorithm_id`, every region and syllable
+// test in `stemregion`, and `stemlang.require` all answer with one.
+impl Error for StemError
+    // The one-line message: `stemerror.message`'s sentence, which
+    // ends without a full stop so a caller can compose it into a log
+    // line of its own.
+    //
+    // Panics with `not implemented` until the bodies land.
+    fn message(self) -> Str
+        todo("stemmer-nv.StemError.message")
+
 // The refusal as a sentence, ending without a full stop, suitable for
 // a log line or an error message the caller composes.
 //
